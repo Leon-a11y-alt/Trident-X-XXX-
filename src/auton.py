@@ -68,7 +68,7 @@ YAW_SIGN = None         # None = automatic from the IMU's down axis; +1 / -1 to 
 # ---------------- search tuning ----------------
 CRUISE = 100.0
 SWEEP_X = 0.55       # sweep line (robot centre), clear of the Anchorage
-SWEEP_HALF_WIDTH = 0.50  # sweep ends at y = +/-0.50 (robot centre)
+SWEEP_HALF_WIDTH = 0.45  # sweep ends at y = +/-0.45 (robot centre); more puts the bow into the side wall
 MIN_SWEEP = 0.45     # m to sweep before trusting the estimate
 PASSED_BY = 0.25     # stop sweeping once the estimate is this far behind the boat
 SWEEP_DEADLINE = 10.0  # s, stop sweeping by then whatever the estimate looks like
@@ -84,8 +84,14 @@ APPROACH_MAX_S = 4.0
 LINE_GAIN = 150.0    # degrees of heading correction per m off the sweep line
 FINAL_POWER = 60.0
 FINAL_MAX_S = 5.0
-FINAL_WEAVE_DEG = 30.0
+FINAL_WEAVE_DEG = 0.0   # was 30: the boat spent FINAL turning and ran out of time
 FINAL_WEAVE_S = 0.6
+FINAL_LINE_GAIN = 250.0  # degrees of heading per m off the Beacon's line in FINAL
+FINAL_OVERSHOOT = 0.06   # m the jaw goes past the Centerline before closing
+TOUCH_POWER = 50.0       # power pushing the bow against the side wall at the end of the sweep
+TOUCH_OVERSHOOT = 0.12   # m past the wall (by dead reckoning) before trusting we touched it
+TOUCH_MAX_S = 1.5
+WALL_GAP = 0.05          # m between the side wall and the bow tip when touching - MEASURE
 CLOSE_S = 0.4        # s for the arm to close before moving
 PIN_POWER = 35.0     # gentle push against our wall at the end
 RETURN_MARGIN_S = 0.5
@@ -253,6 +259,7 @@ class BeaconSearch:
         self.x, self.y, self.speed = start_x, start_y, 0.0
         self.heading = start_heading
         self.surge = self.yaw = 0.0
+        self.fan_surge = 0.0   # surge the fans really got last loop (after the ramp), for dead reckoning
         self.samples = []      # (x, y, rssi) of every message from our beacon
         self.rssi = None       # latest, for the logs
         self.close_count = 0
@@ -274,8 +281,9 @@ class BeaconSearch:
         self.close_count = self.close_count + 1 if rssi >= CLOSE_RSSI else 0
 
     def _dead_reckon(self, dt, heading):
-        factor = 1.0 if self.surge >= 0 else REVERSE_FACTOR
-        target = SPEED_MPS * factor * self.surge / 100.0
+        # use what the fans really got (run() ramps the power), not what was asked for
+        factor = 1.0 if self.fan_surge >= 0 else REVERSE_FACTOR
+        target = SPEED_MPS * factor * self.fan_surge / 100.0
         self.speed += (target - self.speed) * min(1.0, dt / SPEED_TAU)
         h = math.radians(heading)
         self.x = clamp(self.x + self.speed * math.cos(h) * dt, 0.1, POOL_LENGTH - 0.1)
@@ -344,10 +352,24 @@ class BeaconSearch:
         at_end = self.y * self.sweep_dir >= SWEEP_HALF_WIDTH
         passed = (self.beacon_y is not None and swept >= MIN_SWEEP
                   and (self.beacon_y - self.y) * self.sweep_dir < -PASSED_BY)
-        if passed or at_end or t >= SWEEP_DEADLINE:
+        if at_end:
+            self._go("TOUCH", t)
+            return self._touch(t)
+        if passed or t >= SWEEP_DEADLINE:
             self._go("APPROACH", t)
             return self._approach(t)
         self.surge, self.yaw = self._steer(self._line_heading(), CRUISE)
+
+    def _touch(self, t):
+        # Push the bow gently against the side wall. The wall is the one place we know exactly,
+        # so the sideways position is reset there (dead reckoning drifts about 10 % of the distance).
+        wall_y = POOL_HALF_WIDTH - BOW_OFFSET - WALL_GAP
+        pushed_far = self.y * self.sweep_dir >= wall_y + TOUCH_OVERSHOOT
+        if pushed_far or t - self.state_start >= TOUCH_MAX_S:
+            self.y, self.speed = self.sweep_dir * wall_y, 0.0
+            self._go("APPROACH", t)
+            return self._approach(t)
+        self.surge, self.yaw = self._steer(self._line_heading(), TOUCH_POWER)
 
     def _approach(self, t):
         if self.beacon_y is None:
@@ -369,14 +391,16 @@ class BeaconSearch:
 
     def _final(self, t):
         beacon_y = self._clear_of_anchorage(self.beacon_y)
-        reach = math.hypot(CENTER_X - self.x, beacon_y - self.y)
-        if (reach <= JAW_OFFSET + 0.02 or self.close_count >= 2
+        # Go straight at the field along the Beacon's line and push the jaw a little PAST the
+        # Centerline: stopping short misses, pushing the Beacon a bit further still holds it.
+        jaw_x = self.x + JAW_OFFSET
+        if (jaw_x >= CENTER_X + FINAL_OVERSHOOT or self.close_count >= 2
                 or t - self.state_start >= FINAL_MAX_S or self._must_close(t)):
             self._go("CLOSE", t)
             return self._close(t)
-        # weave a little: messages from both sides of the line pin down the sideways error
+        # a straight line gives no sideways information, so weave a little (FINAL_WEAVE_DEG)
         weave = FINAL_WEAVE_DEG if (t - self.state_start) % (2 * FINAL_WEAVE_S) < FINAL_WEAVE_S else -FINAL_WEAVE_DEG
-        aim = bearing(self.x, self.y, CENTER_X, beacon_y)
+        aim = clamp((beacon_y - self.y) * FINAL_LINE_GAIN, -45.0, 45.0)
         self.surge, self.yaw = self._steer(aim + weave, FINAL_POWER)
 
     @staticmethod
@@ -449,15 +473,17 @@ def run(robot, imu_port, radio_port, arm_port, left_port, right_port, balance,
         if t >= T_AUTON:  # pressing Auton in VS Code may not stop at 20 s by itself
             break
         surge, yaw, arm = search.step(t, dt, heading.update(), radio.poll(t))
-        left, right = balance(surge + yaw, surge - yaw)
-        left_now += clamp(left - left_now, -ramp_step, ramp_step)
-        right_now += clamp(right - right_now, -ramp_step, ramp_step)
-        robot.thruster(left_port).set_duty(left_now)
-        robot.thruster(right_port).set_duty(right_now)
+        # ramp first, then balance, so the dead reckoning knows the power the fans really get
+        left_now += clamp(surge + yaw - left_now, -ramp_step, ramp_step)
+        right_now += clamp(surge - yaw - right_now, -ramp_step, ramp_step)
+        search.fan_surge = (left_now + right_now) / 2
+        left, right = balance(left_now, right_now)
+        robot.thruster(left_port).set_duty(left)
+        robot.thruster(right_port).set_duty(right)
         robot.servo(arm_port).angle(arm)
         trace.append((round(t, 3), search.state, round(search.x, 3), round(search.y, 3),
                       round(search.heading, 1), search.beacon_y, search.rssi,
-                      round(left_now), round(right_now)))
+                      round(left), round(right)))
     robot.thruster(left_port).set_duty(0)
     robot.thruster(right_port).set_duty(0)
     if save_logs:

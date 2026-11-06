@@ -33,7 +33,7 @@ BALANCE_LIMIT = 0.5
 # Press A to switch between slow mode (thrusters capped at SLOW_POWER) and full power.
 SLOW_POWER = 0.6
 
-# Press LEFT_TRIGGER to switch the stick cap on/off. While on, sticks 1 and 3 are capped at
+# Press B to switch the stick cap on/off (LEFT_TRIGGER is the arm). While on, sticks 1 and 3 are capped at
 # +CAP_LIMIT forward and -CAP_LIMIT backward.
 CAP_LIMIT = 50
 
@@ -198,7 +198,7 @@ def driver(robot):
                 elif name == "A":
                     slow_mode = not slow_mode
                     print("POWER:", f"{SLOW_POWER:.0%} (slow mode)" if slow_mode else "100% (full power)")
-                elif name == "LEFT_TRIGGER":
+                elif name == "B":
                     capped = not capped
                     print("CAP:", f"sticks capped at +/-{CAP_LIMIT}" if capped else "off (up to 100)")
                 elif name == "LEFT":
@@ -250,6 +250,7 @@ def driver(robot):
         robot.thruster(STICK1_THRUSTER).set_duty(duty1)
         robot.thruster(STICK3_THRUSTER).set_duty(duty3)
 
+        # Hold LEFT_TRIGGER to open the arm (B toggles the cap, so the two no longer clash)
         if robot.controller.button("LEFT_TRIGGER").is_down:
             robot.servo(ARM).angle(180)
         else:

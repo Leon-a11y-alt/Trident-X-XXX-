@@ -123,7 +123,15 @@ class Sim:
         v_target = self.vmax * surge / 100 * (1 if surge >= 0 else auton.REVERSE_FACTOR)
         self.speed += (v_target - self.speed) * DT / 0.5
         self.yaw_rate += (self.turn_max * yaw / auton.YAW_MAX - self.yaw_rate) * DT / 0.3
-        self.h += self.yaw_rate * DT
+        # A bow / stern swinging into a wall or the Anchorage pushes the boat off it a little;
+        # if that is not enough the turn is stopped. (It used to swing straight through and
+        # leave the boat wedged for good.)
+        new_h = self.h + self.yaw_rate * DT
+        nudge = self._unwedge(math.radians(new_h))
+        if nudge is None:
+            self.yaw_rate = 0.0
+        else:
+            self.x, self.y, self.h = nudge[0], nudge[1], new_h
         hr = math.radians(self.h)
         nx = self.x + (self.speed * math.cos(hr) + self.drift[0]) * DT
         ny = self.y + (self.speed * math.sin(hr) + self.drift[1]) * DT
@@ -144,6 +152,18 @@ class Sim:
         if self.neighbour and self.t >= self.next_nb:  # another pool's beacon, far away
             self.next_nb += 0.7
             self.radio.transmit(23, -88 + self.rng.gauss(0, 3))
+
+    def _unwedge(self, hr):
+        """Nearest free spot (within 2 cm) for the boat at heading hr, or None."""
+        if self._free(self.x, self.y, hr):
+            return self.x, self.y
+        for step in (0.005, 0.01, 0.02):
+            for k in range(8):
+                a = k * math.pi / 4
+                x, y = self.x + step * math.cos(a), self.y + step * math.sin(a)
+                if self._free(x, y, hr):
+                    return x, y
+        return None
 
     def _bow(self, x, y, hr):
         return x + auton.BOW_OFFSET * math.cos(hr), y + auton.BOW_OFFSET * math.sin(hr)

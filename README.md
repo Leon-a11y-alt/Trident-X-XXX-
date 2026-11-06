@@ -46,6 +46,8 @@ of 0.10 m around the arm, about 30 % with 0.20 m. A wide mouth on the arm matter
 |---|---|
 | Joystick 1 / 3 | Drive the two fans (tank drive) |
 | A | Toggle slow mode (60% power) |
+| Y (hold) | Extend the gripper (jaws slide out / open) |
+| B (hold) | Retract the gripper (jaws slide in / close) |
 | Left trigger | Toggle cap (sticks limited to ±50) |
 | D-pad LEFT / RIGHT | Turn down stick 1's / stick 3's fan by 2% (forward balance) |
 | Right trigger + D-pad | Same, for the backward balance |

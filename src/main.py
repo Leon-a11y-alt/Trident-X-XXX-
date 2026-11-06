@@ -33,6 +33,17 @@ BALANCE_LIMIT = 0.5
 # Press A to switch between slow mode (thrusters capped at SLOW_POWER) and full power.
 SLOW_POWER = 0.6
 
+# Gripper (servo on ARM -> gears -> pinion -> racks that slide the C-jaws).
+# Hold Y to EXTEND (open the jaws), hold B to RETRACT (close them). Let go and they stay put,
+# so the jaws can be opened just wide enough for the Beacon.
+# The racks have end stops: if the servo hums or strains at either end, bring that end's angle
+# in a little so the servo never pushes against a stop.
+GRIPPER_RETRACTED_DEG = 0     # jaws fully in / closed (auton uses ARM_CLOSED_DEG = 0 too)
+GRIPPER_EXTENDED_DEG = 180    # jaws fully out / open (auton uses ARM_OPEN_DEG = 180 too)
+GRIPPER_SPEED = 120           # degrees per second while Y or B is held
+GRIPPER_EXTEND_BUTTON = "Y"
+GRIPPER_RETRACT_BUTTON = "B"
+
 # Press LEFT_TRIGGER to switch the stick cap on/off. While on, sticks 1 and 3 are capped at
 # +CAP_LIMIT forward and -CAP_LIMIT backward.
 CAP_LIMIT = 50
@@ -129,12 +140,33 @@ def describe_balance(balance):
     return f"stick 1 fan {stick1_scale:.0%}, stick 3 fan {stick3_scale:.0%}"
 
 
+def move_gripper(robot, angle):
+    """Step the gripper toward extend (Y) or retract (B) while a button is held. Returns the new angle."""
+    step = GRIPPER_SPEED / 50  # the loop runs 50 times a second
+    low = min(GRIPPER_RETRACTED_DEG, GRIPPER_EXTENDED_DEG)
+    high = max(GRIPPER_RETRACTED_DEG, GRIPPER_EXTENDED_DEG)
+    direction = 1 if GRIPPER_EXTENDED_DEG >= GRIPPER_RETRACTED_DEG else -1
+    if robot.controller.button(GRIPPER_EXTEND_BUTTON).is_down:
+        angle += direction * step
+    elif robot.controller.button(GRIPPER_RETRACT_BUTTON).is_down:
+        angle -= direction * step
+    angle = max(low, min(high, angle))
+    robot.servo(ARM).angle(angle)
+    return angle
+
+
+def gripper_percent(angle):
+    """How far out the jaws are, 0 % = retracted, 100 % = extended."""
+    span = GRIPPER_EXTENDED_DEG - GRIPPER_RETRACTED_DEG
+    return 100 * (angle - GRIPPER_RETRACTED_DEG) / span if span else 0
+
+
 def initialize(robot):
     time.sleep(0.5)
     print("Battery:", robot.battery_voltage, "V")
 
-    # Set Servo speed to 120 deg/s
-    robot.servo(ARM).set_speed(120)
+    # Servo speed limit, a bit above GRIPPER_SPEED so the gripper follows the buttons smoothly
+    robot.servo(ARM).set_speed(GRIPPER_SPEED * 1.5)
 
     # The boat is still here: measure the gyro bias for the auton heading.
     auton.calibrate_imu(robot, IMU_PORT)
@@ -167,8 +199,11 @@ def driver(robot):
     test_loops = 0     # loops left in the current test step
     last_printed = None
     last_print_loop = -PRINT_EVERY
+    gripper = GRIPPER_RETRACTED_DEG  # start with the jaws in, as before
+    last_gripper_print = None
 
     print("Driver started. Press A to switch between 60% and full power.")
+    print(f"GRIPPER: hold {GRIPPER_EXTEND_BUTTON} to extend, {GRIPPER_RETRACT_BUTTON} to retract")
     print(f"BALANCE forward: {describe_balance(balance['forward'])}")
     print(f"BALANCE backward: {describe_balance(balance['reverse'])}")
 
@@ -250,10 +285,13 @@ def driver(robot):
         robot.thruster(STICK1_THRUSTER).set_duty(duty1)
         robot.thruster(STICK3_THRUSTER).set_duty(duty3)
 
-        if robot.controller.button("LEFT_TRIGGER").is_down:
-            robot.servo(ARM).angle(180)
-        else:
-            robot.servo(ARM).angle(0)
+        # Gripper: Y extends, B retracts, and it stays where it is when both are let go.
+        gripper = move_gripper(robot, gripper)
+        moving = (robot.controller.button(GRIPPER_EXTEND_BUTTON).is_down
+                  or robot.controller.button(GRIPPER_RETRACT_BUTTON).is_down)
+        if not moving and gripper != last_gripper_print:
+            last_gripper_print = gripper
+            print(f"GRIPPER: {gripper:.0f} deg ({gripper_percent(gripper):.0f} % extended)")
 
         # Status line: only when a stick has moved by PRINT_STEP or more, and not too often.
         loop_count += 1

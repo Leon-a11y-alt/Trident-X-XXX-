@@ -1,5 +1,17 @@
 """Autonomous Period (first 20 s): find the Beacon by radio, grab it and bring it home.
 
+TWO MODES - pick one before every match:
+  BEACON SEEN  The Beacon is already in the pool when we set the boat down. Measure where it
+               is on the Centerline, put that in BEACON_SEEN_Y, and place the boat where the
+               printout at start-up says (sideways at our wall, 0.25 m short of the Beacon's
+               line, bow pointing toward the Beacon's side). The boat curves onto the Beacon's
+               line, drives straight in, closes the gripper and reverses straight back.
+               No radio guessing. Simulated: about 50 % scored vs 9 % for the radio search
+               (about 85 % with a jaw that grabs from 0.20 m).
+  RADIO SEARCH BEACON_SEEN_Y = None (the default). Used when we can't see the Beacon before
+               the match. Set START_HEADING / START_Y and the boat searches by radio (below).
+Ask the Head Referee whether robots may be placed after the Beacon is in the pool.
+
 Scoring: 10 points if the Beacon body is partly inside our Starting Area (the 0.4 m strip
 along our wall) when the Autonomous Period is scored (Game Manual <SC2>, <SC6>).
 
@@ -50,6 +62,18 @@ from pathlib import Path
 START_HEADING = 90.0
 START_X = 0.20  # m from our wall to the robot centre
 START_Y = 0.0   # m sideways from the middle of our wall (+ = right, wall ends are +/-0.78)
+
+# ---------------- BEACON SEEN mode - SET BEFORE EVERY MATCH (or None) ----------------
+# Where the Beacon sits on the Centerline, in m sideways from the middle of the pool as seen
+# from behind our wall: + = right, - = left. The Anchorage takes the middle, so the Beacon is
+# always about 0.22 to 0.75 m out to one side. Tape marks along our wall every 5 cm help:
+# simulated: exact 54 %, measured to +/-5 cm 51 %, to +/-10 cm 42 %.
+# None = we could not see the Beacon: use the radio search and START_HEADING / START_Y above.
+BEACON_SEEN_Y = None
+LINEUP_OFFSET = 0.25     # m the boat starts short of the Beacon's line (room to curve onto it)
+LINEUP_POWER = 70.0      # forward power driving in (70 beat 50 and 40 in the simulator)
+LINEUP_OVERSHOOT = 0.06  # m past where JAW_OFFSET says the Beacon sits before closing
+LINEUP_LINE_GAIN = 250.0  # degrees of heading per m off the Beacon's line
 
 # ---------------- radio ----------------
 BEACON_ID = None     # None = use the strongest beacon heard in the first LOCK_S seconds
@@ -242,6 +266,31 @@ class Heading:
         return self.heading
 
 
+def start_pose():
+    """(heading, y) the boat must start at: worked out from BEACON_SEEN_Y in BEACON SEEN mode."""
+    if BEACON_SEEN_Y is None:
+        return START_HEADING, START_Y
+    side = 1.0 if BEACON_SEEN_Y >= 0 else -1.0
+    return side * 90.0, BEACON_SEEN_Y - side * LINEUP_OFFSET
+
+
+def print_start():
+    """Says which mode is set and exactly where to put the boat. Called from main.py initialize."""
+    heading, y = start_pose()
+    where = f"{abs(y):.2f} m {'right' if y >= 0 else 'left'} of the middle of our wall"
+    if BEACON_SEEN_Y is None:
+        print(f"AUTON MODE: RADIO SEARCH. Boat centre {where}, {START_X:.2f} m out, "
+              f"heading {heading:+.0f} deg. (Set BEACON_SEEN_Y in auton.py if you can see the Beacon.)")
+        return
+    if not 0.2 <= abs(BEACON_SEEN_Y) <= 0.78:
+        print(f"AUTON WARNING: BEACON_SEEN_Y = {BEACON_SEEN_Y} is not beside the Anchorage "
+              "(0.22 to 0.75 m out). Check the measurement and the +/- side.")
+    bow = "RIGHT" if heading > 0 else "LEFT"
+    print(f"AUTON MODE: BEACON SEEN at {abs(BEACON_SEEN_Y):.2f} m "
+          f"{'right' if BEACON_SEEN_Y >= 0 else 'left'}. Put the boat SIDEWAYS against our wall, "
+          f"centre {where}, bow pointing {bow}.")
+
+
 class BeaconSearch:
     """Out / sweep / approach / grab / return. step() runs every loop and touches no hardware."""
 
@@ -417,6 +466,56 @@ class BeaconSearch:
             self.surge, self.yaw = self._steer(0.0, -PIN_POWER)
 
 
+class LineUpSearch(BeaconSearch):
+    """BEACON SEEN mode: curve onto the Beacon's line, straight in, close, reverse straight out.
+
+    Same dead reckoning and steering as the radio search, but the Beacon y is the measured one,
+    so nothing is guessed from the radio (messages are still logged).
+        LINE   steer onto the Beacon's line (heading 0 = at the field) and drive in
+        CLOSE  close the gripper
+        BACK   reverse straight back along the line to our wall - no turn with the Beacon held
+        PIN    keep backing gently against our wall until the period ends
+    """
+
+    def __init__(self, beacon_y):
+        heading, y = start_pose()
+        super().__init__(start_heading=heading, start_y=y)
+        self.beacon_y = beacon_y
+        self.state = "LINE"
+
+    def step(self, t, dt, heading, messages):
+        self._dead_reckon(dt, heading)
+        for _, rssi in messages:
+            self._message(rssi)
+        getattr(self, "_" + self.state.lower())(t)
+        scale = max(1.0, (abs(self.surge) + abs(self.yaw)) / 100.0)
+        self.surge, self.yaw = self.surge / scale, self.yaw / scale
+        holding = self.state in ("CLOSE", "BACK", "PIN")
+        return self.surge, self.yaw, ARM_CLOSED_DEG if holding else ARM_OPEN_DEG
+
+    def _line(self, t):
+        if self.x + JAW_OFFSET >= CENTER_X + LINEUP_OVERSHOOT or self._must_close(t):
+            self._go("CLOSE", t)
+            return self._close(t)
+        aim = clamp((self.beacon_y - self.y) * LINEUP_LINE_GAIN, -60.0, 60.0)
+        self.surge, self.yaw = self._steer(aim, LINEUP_POWER, turning_power=ARC_POWER)
+
+    def _close(self, t):
+        self.surge = self.yaw = 0.0
+        if t - self.state_start >= CLOSE_S:
+            self._go("BACK", t)
+
+    def _back(self, t):
+        if self.x <= STERN_OFFSET + 0.05:
+            self._go("PIN", t)
+            return self._pin(t)
+        aim = clamp(-(self.beacon_y - self.y) * 150.0, -30.0, 30.0)  # reversing: steer the other way
+        self.surge, self.yaw = self._steer(aim, -100.0)
+
+    def _pin(self, t):
+        self.surge, self.yaw = self._steer(0.0, -PIN_POWER)
+
+
 # ---------------- robot glue (called from main.py) ----------------
 _still_imu_readings = []
 
@@ -470,9 +569,9 @@ def run(robot, imu_port, radio_port, arm_port, drive, balance,
     """
     start = clock()
     radio = BeaconListener(robot.radiobeacon(radio_port))
-    heading = Heading(robot.imu(imu_port), START_HEADING)
+    heading = Heading(robot.imu(imu_port), start_pose()[0])
     heading.calibrate(_still_imu_readings)
-    search = BeaconSearch()
+    search = BeaconSearch() if BEACON_SEEN_Y is None else LineUpSearch(BEACON_SEEN_Y)
     if arm_port:  # None = no gripper servo fitted
         robot.servo(arm_port).set_speed(ARM_SPEED)
     left_now = right_now = 0.0

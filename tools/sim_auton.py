@@ -214,18 +214,31 @@ def make(seed, heading_error=5.0, corner_start=True, **kw):
     return Sim(seed, heading, start_y, beacon, **kw), heading, start_y
 
 
-def play(seed, verbose=False, capture=0.10, **kw):
+def play(seed, verbose=False, capture=0.10, seen=None, **kw):
+    """seen = None: radio search. seen = a number: BEACON SEEN mode, with the Beacon measured
+    to +/- that many metres and the boat placed where auton.print_start() says (+/-3 cm, +/-5 deg)."""
     global CAPTURE_R
     CAPTURE_R = capture
     sim, heading, start_y = make(seed, **kw)
-    # the team sets the start pose by eye: a few degrees / cm off
-    auton.START_HEADING = round(heading / 90) * 90
-    auton.START_Y = round(start_y, 1)
+    auton.BEACON_SEEN_Y = None
+    if seen is None:
+        # the team sets the start pose by eye: a few degrees / cm off
+        auton.START_HEADING = round(heading / 90) * 90
+        auton.START_Y = round(start_y, 1)
+    else:
+        rng = random.Random(seed * 31 + 7)
+        auton.BEACON_SEEN_Y = round(sim.by + rng.uniform(-seen, seen), 2)
+        heading, start_y = auton.start_pose()
+        sim.h = heading + rng.uniform(-5.0, 5.0)
+        sim.y = start_y + rng.uniform(-0.03, 0.03)
     auton._still_imu_readings[:] = [sim.imu_sensor.read() for _ in range(20)]
     ports = dict(imu_port="I", radio_port="B", arm_port="A",
                  drive=lambda l, r: (sim.thruster("L").set_duty(l), sim.thruster("R").set_duty(r)))
-    search, radio = auton.run(sim, **ports, balance=lambda a, b: (a, b), ramp_step=5.0,
-                              clock=sim.clock, save_logs=False)
+    try:
+        search, radio = auton.run(sim, **ports, balance=lambda a, b: (a, b), ramp_step=5.0,
+                                  clock=sim.clock, save_logs=False)
+    finally:
+        auton.BEACON_SEEN_Y = None
     if verbose:
         print(f"seed {seed}: start heading {heading:.0f}, y {start_y:.2f}; "
               f"beacon at y {make(seed)[0].by:.2f}")
@@ -246,7 +259,11 @@ if __name__ == "__main__":
                       ("NOT calibrated (speed +/-25 %, heading +/-10 deg)",
                        {"speed_error": 0.25, "heading_error": 10.0}),
                       ("calibrated, WIDE mouth (grabs within 0.20 m instead of 0.10)",
-                       {"capture": 0.20})):
+                       {"capture": 0.20}),
+                      ("BEACON SEEN, measured to +/-5 cm, calibrated", {"seen": 0.05}),
+                      ("BEACON SEEN, measured to +/-5 cm, NOT calibrated",
+                       {"seen": 0.05, "speed_error": 0.25}),
+                      ("BEACON SEEN, measured to +/-5 cm, WIDE mouth", {"seen": 0.05, "capture": 0.20})):
         results = [play(s, **kw) for s in range(MATCHES)]
         wins = sum(r[0] for r in results)
         states = {}

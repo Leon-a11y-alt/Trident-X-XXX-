@@ -174,6 +174,7 @@ def initialize(robot):
         robot.servo(GRIPPER).set_speed(SERVO_SPEED)
     set_flipper(FLIPPER_UP_DEG)
     auton.check_sensors(robot, IMU_PORT, RADIOBEACON_PORT)  # prints OK / NO DATA for each
+    auton.print_start()  # which Auton mode is set and exactly where to put the boat
     auton.calibrate_imu(robot, IMU_PORT)  # boat is still here: measure the gyro bias
 
 

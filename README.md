@@ -18,7 +18,28 @@ contains `project.marlin`), connect the Controller and Robot Brain, then press *
 
 ## Autonomous (first 20 s)
 
-Before **every** match, set the start pose at the top of `src/auton.py`:
+There are two modes. Pick one before **every** match at the top of `src/auton.py`.
+
+### Mode 1: BEACON SEEN (use this whenever the Beacon is in the pool before we set the boat down)
+
+1. Measure where the Beacon sits on the Centerline: metres sideways from the middle of the pool, seen
+   from behind our wall, `+` = right, `-` = left (always about 0.22 to 0.75 m out). Tape marks every
+   5 cm along our wall make this quick.
+2. Put it in `BEACON_SEEN_Y`, e.g. `BEACON_SEEN_Y = 0.47`.
+3. Start the program. It prints exactly where to put the boat, for example:
+   `AUTON MODE: BEACON SEEN at 0.47 m right. Put the boat SIDEWAYS against our wall, centre 0.22 m right
+   of the middle of our wall, bow pointing RIGHT.`
+4. After the match set it back to `None` (or the next match's value).
+
+The boat curves onto the Beacon's line, drives straight in with the gripper open, closes it and
+reverses straight back to our wall, with no turn while it holds the Beacon. No radio guessing.
+Simulated: about 50 % scored (85 % with a jaw that grabs from 0.20 m), against 9 % for the radio search.
+Measuring the Beacon to +/-5 cm is enough (51 %); +/-10 cm drops to 42 %.
+Ask the Head Referee whether robots may be placed after the Beacon is in the pool.
+
+### Mode 2: RADIO SEARCH (`BEACON_SEEN_Y = None`, when we can't see the Beacon)
+
+Set the start pose at the top of `src/auton.py`:
 
 - `START_HEADING`: which way the bow points. `+90` = along our wall to the right, `-90` = to the left,
   `0` = straight at the field. The boat is longer than the 0.4 m Starting Area, so it starts sideways.

@@ -214,13 +214,14 @@ def make(seed, heading_error=5.0, corner_start=True, **kw):
     return Sim(seed, heading, start_y, beacon, **kw), heading, start_y
 
 
-def play(seed, verbose=False, capture=0.10, seen=None, **kw):
+def play(seed, verbose=False, capture=0.10, seen=None, close_rssi=None, **kw):
     """seen = None: radio search. seen = a number: BEACON SEEN mode, with the Beacon measured
     to +/- that many metres and the boat placed where auton.print_start() says (+/-3 cm, +/-5 deg)."""
     global CAPTURE_R
     CAPTURE_R = capture
     sim, heading, start_y = make(seed, **kw)
     auton.BEACON_SEEN_Y = None
+    auton.CLOSE_RSSI = close_rssi  # the fake radio sits near the stern: about -40 dBm with the Beacon held
     if seen is None:
         # the team sets the start pose by eye: a few degrees / cm off
         auton.START_HEADING = round(heading / 90) * 90
@@ -239,6 +240,7 @@ def play(seed, verbose=False, capture=0.10, seen=None, **kw):
                                   clock=sim.clock, save_logs=False)
     finally:
         auton.BEACON_SEEN_Y = None
+        auton.CLOSE_RSSI = None
     if verbose:
         print(f"seed {seed}: start heading {heading:.0f}, y {start_y:.2f}; "
               f"beacon at y {make(seed)[0].by:.2f}")
@@ -263,7 +265,11 @@ if __name__ == "__main__":
                       ("BEACON SEEN, measured to +/-5 cm, calibrated", {"seen": 0.05}),
                       ("BEACON SEEN, measured to +/-5 cm, NOT calibrated",
                        {"seen": 0.05, "speed_error": 0.25}),
-                      ("BEACON SEEN, measured to +/-5 cm, WIDE mouth", {"seen": 0.05, "capture": 0.20})):
+                      ("BEACON SEEN, measured to +/-5 cm, WIDE mouth", {"seen": 0.05, "capture": 0.20}),
+                      ("BEACON SEEN + radio close (CLOSE_RSSI -40), calibrated",
+                       {"seen": 0.05, "close_rssi": -40.0}),
+                      ("BEACON SEEN + radio close (CLOSE_RSSI -40), NOT calibrated",
+                       {"seen": 0.05, "close_rssi": -40.0, "speed_error": 0.25})):
         results = [play(s, **kw) for s in range(MATCHES)]
         wins = sum(r[0] for r in results)
         states = {}

@@ -79,7 +79,14 @@ LINEUP_LINE_GAIN = 250.0  # degrees of heading per m off the Beacon's line
 BEACON_ID = None     # None = use the strongest beacon heard in the first LOCK_S seconds
 LOCK_S = 0.5
 PATH_LOSS = (1.5, 2.0, 2.5, 3.0, 3.5)  # signal-drop steepness values tried in the fit
-CLOSE_RSSI = -38.0   # dBm with the Beacon inside the open arm - MEASURE (ends FINAL early)
+# "The Beacon is in the jaws" by radio: close the gripper as soon as CLOSE_MESSAGES messages in a
+# row are at least this loud, or when the distance driven says so, whichever comes first.
+# None = OFF (distance only). Measure it in the pool before switching it on: hold the Beacon in the
+# OPEN jaws, start the program and read "rssi=" in the SENSOR RADIO line (or logs/beacon_*.csv);
+# use a value a few dB BELOW the quietest reading there. Too low and the jaws close early.
+# Simulated with BEACON SEEN: 52 % -> 55 % with the speed measured, 35 % -> 42 % without.
+CLOSE_RSSI = None
+CLOSE_MESSAGES = 2   # loud messages in a row needed (3 was much worse: the boat overshoots)
 ANTENNA_OFFSET = 0.0  # m from the robot centre to the radio module, + toward the bow
 
 # ---------------- boat motion - MEASURE ----------------
@@ -322,7 +329,8 @@ class BeaconSearch:
         ay = self.y + ANTENNA_OFFSET * math.sin(math.radians(self.heading))
         self.samples.append((ax, ay, rssi))
         self.rssi = rssi
-        self.close_count = self.close_count + 1 if rssi >= CLOSE_RSSI else 0
+        loud = CLOSE_RSSI is not None and rssi >= CLOSE_RSSI
+        self.close_count = self.close_count + 1 if loud else 0
 
     def _dead_reckon(self, dt, heading):
         factor = 1.0 if self.surge >= 0 else REVERSE_FACTOR
@@ -421,7 +429,7 @@ class BeaconSearch:
     def _final(self, t):
         beacon_y = self._clear_of_anchorage(self.beacon_y)
         reach = math.hypot(CENTER_X - self.x, beacon_y - self.y)
-        if (reach <= JAW_OFFSET + 0.02 or self.close_count >= 2
+        if (reach <= JAW_OFFSET + 0.02 or self.close_count >= CLOSE_MESSAGES
                 or t - self.state_start >= FINAL_MAX_S or self._must_close(t)):
             self._go("CLOSE", t)
             return self._close(t)
@@ -471,7 +479,8 @@ class LineUpSearch(BeaconSearch):
 
     Same dead reckoning and steering as the radio search, but the Beacon y is the measured one,
     so nothing is guessed from the radio (messages are still logged).
-        LINE   steer onto the Beacon's line (heading 0 = at the field) and drive in
+        LINE   steer onto the Beacon's line (heading 0 = at the field) and drive in, until the
+               distance driven says the jaws are at the Beacon or the radio hears it close
         CLOSE  close the gripper
         BACK   reverse straight back along the line to our wall - no turn with the Beacon held
         PIN    keep backing gently against our wall until the period ends
@@ -494,7 +503,9 @@ class LineUpSearch(BeaconSearch):
         return self.surge, self.yaw, ARM_CLOSED_DEG if holding else ARM_OPEN_DEG
 
     def _line(self, t):
-        if self.x + JAW_OFFSET >= CENTER_X + LINEUP_OVERSHOOT or self._must_close(t):
+        reached = self.x + JAW_OFFSET >= CENTER_X + LINEUP_OVERSHOOT   # by distance driven
+        heard_close = self.close_count >= CLOSE_MESSAGES               # by radio (if CLOSE_RSSI set)
+        if reached or heard_close or self._must_close(t):
             self._go("CLOSE", t)
             return self._close(t)
         aim = clamp((self.beacon_y - self.y) * LINEUP_LINE_GAIN, -60.0, 60.0)
@@ -620,7 +631,8 @@ def save_log(messages, trace):
 # Pool checklist (once, with the real Beacon):
 #   1. Run Auton with the boat held still: logs/beacon_*.csv shows messages per second and
 #      rssi. "missed" > 0 means the Beacon sends faster than we read it.
-#   2. Beacon inside the open arm: lowest rssi seen there -> CLOSE_RSSI.
+#   2. Beacon inside the open arm: a few dB below the lowest rssi seen there -> CLOSE_RSSI
+#      (it is None = off until then).
 #   3. Time 2 m straight at full power -> SPEED_MPS. Time one full spin -> TURN_RATE_DPS.
 #      These two matter most: the position estimate is built on them.
 #   4. Run Auton with the boat out of the water and turn it right by hand: the heading column

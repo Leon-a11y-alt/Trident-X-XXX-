@@ -37,6 +37,13 @@ Simulated: about 50 % scored (85 % with a jaw that grabs from 0.20 m), against 9
 Measuring the Beacon to +/-5 cm is enough (51 %); +/-10 cm drops to 42 %.
 Ask the Head Referee whether robots may be placed after the Beacon is in the pool.
 
+**Radio "Beacon in the jaws" check (optional, off until measured):** with `CLOSE_RSSI` set, the gripper
+also closes as soon as 2 radio messages in a row are at least that loud, whichever comes first with the
+distance driven. To measure it: hold the Beacon in the open jaws, start the program and read `rssi=` in
+the `SENSOR RADIO` line, then set `CLOSE_RSSI` a few dB below the quietest value. Simulated gain is
+small (about +3 % with the speed measured, +7 % without), because most misses are sideways and signal
+strength gives no direction.
+
 ### Mode 2: RADIO SEARCH (`BEACON_SEEN_Y = None`, when we can't see the Beacon)
 
 Set the start pose at the top of `src/auton.py`:

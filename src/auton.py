@@ -91,7 +91,7 @@ PIN_POWER = 35.0     # gentle push against our wall at the end
 RETURN_MARGIN_S = 0.5
 
 # ---------------- arm - MEASURE ----------------
-# In the driver code the arm sits at 0 and goes to 180 while LEFT_TRIGGER is held.
+# In the driver code the gripper opens toward 180 while Y is held and closes toward 0 with B.
 # Set which angle holds the Beacon. Effectors go idle when a period ends (an idle servo sits
 # at 90), so the boat also pushes the Beacon against our wall in case the arm lets go.
 ARM_OPEN_DEG = 180.0
@@ -161,6 +161,8 @@ class BeaconListener:
     def poll(self, t):
         """New messages from our beacon since the last call, as [(t, rssi)]."""
         reading = self.radio.read()
+        if math.isinf(getattr(reading, "age", 0) or 0):
+            return []  # nothing received yet: rx_count is a placeholder 0, don't track it
         rx = getattr(reading, "rx_count", None)
         if rx is None or rx == self.last_rx:
             return []
@@ -430,15 +432,49 @@ def calibrate_imu(robot, imu_port, seconds=1.0):
         time.sleep(0.02)
 
 
-def run(robot, imu_port, radio_port, arm_port, left_port, right_port, balance,
+def check_sensors(robot, imu_port, radio_port, seconds=1.0):
+    """Prints whether the IMU and the Radio Receiver are sending. Returns (imu_ok, radio_ok)."""
+    imu, radio = robot.imu(imu_port), robot.radiobeacon(radio_port)
+    end = time.monotonic() + seconds
+    first_rx = last = None
+    while time.monotonic() < end:
+        reading = radio.read()
+        if reading.ok and reading.rx_count > 0:  # a real Beacon message, not a placeholder
+            first_rx = reading.rx_count if first_rx is None else first_rx
+            last = reading
+        time.sleep(0.02)
+    gyro = imu.read()
+    imu_ok = gyro.ok
+    if imu_ok:
+        print(f"SENSOR IMU {imu_port}: OK  accel=({gyro.accel_x:.2f}, {gyro.accel_y:.2f}, "
+              f"{gyro.accel_z:.2f}) g  gyro=({gyro.gyro_x:.1f}, {gyro.gyro_y:.1f}, {gyro.gyro_z:.1f}) deg/s")
+    else:
+        print(f"SENSOR IMU {imu_port}: NO DATA - check the cable / port")
+    radio_ok = last is not None
+    if radio_ok:
+        heard = last.rx_count - first_rx
+        print(f"SENSOR RADIO {radio_port}: OK  beacon_id={last.beacon_id} rssi={last.rssi:.0f} dBm "
+              f"snr={last.snr:.1f} dB, {heard} messages in {seconds:.0f} s")
+    else:
+        print(f"SENSOR RADIO {radio_port}: NO BEACON HEARD - is the Beacon on? check the cable / port")
+    return imu_ok, radio_ok
+
+
+def run(robot, imu_port, radio_port, arm_port, drive, balance,
         ramp_step=5.0, clock=time.monotonic, save_logs=True):
-    """Runs the search until the period ends. balance(left, right) -> (left, right) duties."""
+    """Runs the search until the period ends.
+
+    Each loop it works out (go + turn_right, go - turn_right) and passes them through
+    balance(a, b) -> (a, b) and then drive(a, b). main.py decides which thrusters get them
+    (both left thrusters get a, both right thrusters get b).
+    """
     start = clock()
     radio = BeaconListener(robot.radiobeacon(radio_port))
     heading = Heading(robot.imu(imu_port), START_HEADING)
     heading.calibrate(_still_imu_readings)
     search = BeaconSearch()
-    robot.servo(arm_port).set_speed(ARM_SPEED)
+    if arm_port:  # None = no gripper servo fitted
+        robot.servo(arm_port).set_speed(ARM_SPEED)
     left_now = right_now = 0.0
     trace = []
     last = start
@@ -452,14 +488,13 @@ def run(robot, imu_port, radio_port, arm_port, left_port, right_port, balance,
         left, right = balance(surge + yaw, surge - yaw)
         left_now += clamp(left - left_now, -ramp_step, ramp_step)
         right_now += clamp(right - right_now, -ramp_step, ramp_step)
-        robot.thruster(left_port).set_duty(left_now)
-        robot.thruster(right_port).set_duty(right_now)
-        robot.servo(arm_port).angle(arm)
+        drive(left_now, right_now)
+        if arm_port:
+            robot.servo(arm_port).angle(arm)
         trace.append((round(t, 3), search.state, round(search.x, 3), round(search.y, 3),
                       round(search.heading, 1), search.beacon_y, search.rssi,
                       round(left_now), round(right_now)))
-    robot.thruster(left_port).set_duty(0)
-    robot.thruster(right_port).set_duty(0)
+    drive(0, 0)
     if save_logs:
         print(radio.summary(clock() - start))
         print(f"AUTON finished in state {search.state}, Beacon estimated at y = {search.beacon_y}")
@@ -491,5 +526,8 @@ def save_log(messages, trace):
 #      These two matter most: the position estimate is built on them.
 #   4. Run Auton with the boat out of the water and turn it right by hand: the heading column
 #      in logs/auton_*.csv must go UP. If it goes down, set YAW_SIGN = -1.
+#   4b. Steering is tank drive (left side against right side, same as the sticks). In Auton the
+#      boat must first curve out from the wall toward the side the bow points; if it turns the
+#      wrong way, LEFT_THRUSTERS / RIGHT_THRUSTERS in main.py are swapped.
 #   5. If the log shows more than one beacon_id (other pools nearby), put ours in BEACON_ID.
 #   6. Measure where the radio module sits: ANTENNA_OFFSET (m ahead of the robot centre).

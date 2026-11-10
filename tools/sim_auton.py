@@ -44,6 +44,9 @@ class FakeRadio:
 
     def read(self):
         r = self.last
+        if self.rx == 0:  # like the real library before the first message: age = inf
+            return SimpleNamespace(ok=False, age=math.inf, timestamp=0, rssi=0.0, snr=0.0,
+                                   beacon_id=0, rx_count=0)
         age = int((self.sim.t * 1000) - r.timestamp)
         return SimpleNamespace(ok=age < 250, age=age, timestamp=r.timestamp, rssi=r.rssi,
                                snr=r.snr, beacon_id=r.beacon_id, rx_count=self.rx)
@@ -219,7 +222,8 @@ def play(seed, verbose=False, capture=0.10, **kw):
     auton.START_HEADING = round(heading / 90) * 90
     auton.START_Y = round(start_y, 1)
     auton._still_imu_readings[:] = [sim.imu_sensor.read() for _ in range(20)]
-    ports = dict(imu_port="I", radio_port="B", arm_port="A", left_port="L", right_port="R")
+    ports = dict(imu_port="I", radio_port="B", arm_port="A",
+                 drive=lambda l, r: (sim.thruster("L").set_duty(l), sim.thruster("R").set_duty(r)))
     search, radio = auton.run(sim, **ports, balance=lambda a, b: (a, b), ramp_step=5.0,
                               clock=sim.clock, save_logs=False)
     if verbose:

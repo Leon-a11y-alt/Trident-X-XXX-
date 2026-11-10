@@ -1,10 +1,10 @@
 """TRIDENT X boat: 4 thrusters, gripper servo and rear flipper servo.
 
-MATCH CONTROLS (anticlockwise = pull, clockwise = push)
-    Stick ONE  up    -> FORWARD:  LF anticlockwise, LB clockwise, RF anticlockwise, RB clockwise
-    Stick ONE  down  -> BACKWARD: every thruster the other way
-    Stick FOUR right -> TURN RIGHT: left side as forward, right side as backward
-    Stick FOUR left  -> TURN LEFT:  left side as backward, right side as forward
+MATCH CONTROLS
+    Left joystick  UP / DOWN     -> straight FORWARD / BACKWARD (centre = stop)
+    Right joystick LEFT / RIGHT  -> turn LEFT / RIGHT (centre = no turn)
+        both at once = forward or backward while turning
+        (differential thrust: turn right = left side more forward, right side more backward)
     Hold Y / hold B              -> gripper open / close (stays where you let go)
     Tap X                        -> flipper down / up
     Tap A                        -> slow mode on/off (60 % power)
@@ -12,7 +12,9 @@ MATCH CONTROLS (anticlockwise = pull, clockwise = push)
 SETUP ONLY (not needed in a match)
     D-pad LEFT / RIGHT / DOWN    -> balance: turn the left / right side down 2 %, or reset
     + hold RIGHT_TRIGGER         -> same, but for driving backward
-    Hold RIGHT_TRIGGER + tap UP  -> thruster test, runs each thruster alone (press again to stop)
+    Hold RIGHT_TRIGGER + tap UP  -> thruster test: each thruster alone at 20 %, FORWARD command,
+                                    water must go BACKWARD (press again to stop)
+    Driver screen, once a second -> raw stick numbers "sticks 1=.. 2=.. 3=.. 4=.." to check the sticks
 """
 
 import json
@@ -35,11 +37,11 @@ LEFT_THRUSTERS = ("M3", "M1")    # (front-left, back-left)
 RIGHT_THRUSTERS = ("M5", "M7")   # (front-right, back-right)
 ALL_THRUSTERS = LEFT_THRUSTERS + RIGHT_THRUSTERS
 
-# Spin direction. Left side = "in", right side = "out" (anticlockwise), so the two sides spin
-# opposite ways. True = that thruster's power is flipped.
-# Check with the thruster test: on every step the water must go BACKWARD (toward the flipper).
-# If one pushes the wrong way, change its True/False.
-# Set so that FORWARD = LF anticlockwise, LB clockwise, RF anticlockwise, RB clockwise.
+# Spin direction of each thruster for a FORWARD command. True = that thruster's power is flipped.
+# This covers how each thruster is mounted (front one faces front, back one faces back) and its
+# CW/CCW propeller. Do NOT guess: run the thruster test and, for every thruster whose water goes
+# FORWARD (toward the gripper), flip its True/False. Then all four push the boat forward.
+# Current values were meant to give LF anticlockwise, LB clockwise, RF anticlockwise, RB clockwise.
 REVERSED = {"M3": False, "M1": True,    # left front ANTICLOCKWISE, left back CLOCKWISE
             "M5": True, "M7": False}    # right front ANTICLOCKWISE, right back CLOCKWISE
 
@@ -48,6 +50,17 @@ REVERSED = {"M3": False, "M1": True,    # left front ANTICLOCKWISE, left back CL
 THRUSTER_POWER = {"M3": 1.0, "M1": 1.0, "M5": 1.0, "M7": 1.0}
 
 # ---------------- driving ----------------
+# Left joystick UP/DOWN = forward/backward, right joystick LEFT/RIGHT = turn left/right.
+# The Driver screen prints the raw sticks once a second ("sticks 1=.. 2=.. 3=.. 4=..").
+# Check them before driving:
+#   left joystick UP     -> the THROTTLE_STICK number must go POSITIVE, else set THROTTLE_SIGN = -1
+#   right joystick RIGHT -> the STEER_STICK number must go POSITIVE,    else set STEER_SIGN = -1
+#   if the wrong number moves, put the number that DOES move in THROTTLE_STICK / STEER_STICK.
+THROTTLE_STICK = "ONE"   # left joystick, up/down
+STEER_STICK = "FOUR"     # right joystick, left/right
+THROTTLE_SIGN = 1
+STEER_SIGN = 1
+
 # 1.0 = normal. 3.0 = full power with the stick only 1/3 of the way.
 FORWARD_GAIN = 3.0 
 BACKWARD_GAIN = 3.0    # full reverse at about half stick too
@@ -72,14 +85,15 @@ GRIPPER_OPEN_DEG = 180    # auton uses ARM_OPEN_DEG = 180 too
 FLIPPER_UP_DEG = 0        # resting position
 FLIPPER_DOWN_DEG = 180    # flipped position. Adjust both if the flipper hits the hull.
 
-# Thruster test: one whole side at a time, (name, ports, duty, seconds).
-# Both LEFT thrusters together, a pause, then both RIGHT thrusters together.
-TEST_STEPS = [
-    ("LEFT", LEFT_THRUSTERS, 30, 2),
-    ("pause", (), 0, 2),
-    ("RIGHT", RIGHT_THRUSTERS, 30, 2),
-    ("pause", (), 0, 2),
-]
+# Thruster test (hold RIGHT_TRIGGER + tap UP): each thruster ALONE, low power, with the
+# FORWARD command - the same command it gets when the left joystick is pushed UP.
+# For every thruster the water must go BACKWARD (toward the flipper). If it goes forward,
+# flip that thruster's True/False in REVERSED above. (name, ports, duty, seconds)
+TEST_DUTY = 20
+TEST_STEPS = []
+for _name, _port in (("LEFT FRONT", "M3"), ("LEFT BACK", "M1"),
+                     ("RIGHT FRONT", "M5"), ("RIGHT BACK", "M7")):
+    TEST_STEPS += [(_name, (_port,), TEST_DUTY, 3), ("pause", (), 0, 2)]
 
 # SERVO TEST: set to True, run Driver, and every servo socket below swings 0 <-> 180 on its own
 # (no buttons needed). Plug the gripper servo into each socket in turn to find a working one.
@@ -268,7 +282,9 @@ def driver(robot):
         power = SLOW_POWER if slow else 1.0
         # Stick ONE up/down = forward/backward, stick FOUR right/left = turn right/left.
         # Turn right: left side forward, right side backward (and the opposite for left).
-        forward, turn = read_stick("ONE"), read_stick("FOUR")
+        # Differential thrust: turn RIGHT = left side more forward, right side more backward.
+        forward = THROTTLE_SIGN * read_stick(THROTTLE_STICK)
+        turn = STEER_SIGN * read_stick(STEER_STICK)
         left = max(-100.0, min(100.0, forward + turn)) * power
         right = max(-100.0, min(100.0, forward - turn)) * power
         left, right = balanced(left, right, balance)
@@ -282,8 +298,9 @@ def driver(robot):
                     name, ports, duty, seconds = TEST_STEPS[test_step]
                     test_loops = seconds * 50
                     if duty:
-                        print(f"TEST {name} side ({' + '.join(ports)}): both spin, "
-                              "water must go BACKWARD from both")
+                        print(f"TEST {name} ({ports[0]}, REVERSED={REVERSED[ports[0]]}): "
+                              "FORWARD command - water must go BACKWARD. "
+                              f"If it goes forward, flip REVERSED['{ports[0]}']")
             if test_step is not None:
                 _, ports, duty, _ = TEST_STEPS[test_step]
                 for p in ALL_THRUSTERS:
@@ -319,7 +336,9 @@ def driver(robot):
         # ----- status, once a second -----
         loop += 1
         if loop % 50 == 0:
-            print(f"left={left_now:4.0f} right={right_now:4.0f} | gripper={gripper:3.0f} "
+            raw = [c.joystick(n).value for n in ("ONE", "TWO", "THREE", "FOUR")]
+            print(f"sticks 1={raw[0]:4.0f} 2={raw[1]:4.0f} 3={raw[2]:4.0f} 4={raw[3]:4.0f} | "
+                  f"left={left_now:4.0f} right={right_now:4.0f} | gripper={gripper:3.0f} "
                   f"flipper={'DOWN' if flipper_down else 'UP'} | {'slow' if slow else 'full'}")
 
 

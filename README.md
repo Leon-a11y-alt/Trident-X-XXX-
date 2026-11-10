@@ -82,10 +82,8 @@ of 0.10 m around the arm, about 30 % with 0.20 m. A wide mouth on the arm matter
 
 | Control | Action |
 |---|---|
-| Stick ONE up | Forward: LF anticlockwise, LB clockwise, RF anticlockwise, RB clockwise (anticlockwise = pull, clockwise = push) |
-| Stick ONE down | Backward: every thruster the other way |
-| Stick FOUR right | Turn right: left side (M3, M1) as forward, right side (M5, M7) as backward |
-| Stick FOUR left | Turn left: left side as backward, right side as forward |
+| Left joystick up / down | Straight forward / backward (stick ONE) |
+| Right joystick left / right | Turn left / right (stick FOUR); both sticks at once = forward or backward while turning |
 | Y (hold) | Open the gripper (M4); stays where you let go |
 | B (hold) | Close the gripper |
 | X (tap) | Flipper (M2) down / up |
@@ -93,7 +91,7 @@ of 0.10 m around the arm, about 30 % with 0.20 m. A wide mouth on the arm matter
 | D-pad LEFT / RIGHT | Setup: turn the left / right side down 2 % (forward balance, saved) |
 | Right trigger + D-pad LEFT / RIGHT | Setup: same, for the backward balance |
 | D-pad DOWN (+ right trigger) | Setup: reset the forward (backward) balance |
-| Right trigger + tap UP | Setup: thruster test, each thruster alone at 30 % (tap again to stop) |
+| Right trigger + tap UP | Setup: thruster test, each thruster alone at 20 % with the forward command; water must go backward, else flip its `REVERSED` (tap again to stop) |
 
 Sensors: IMU on S6, Radio Receiver on S1. At startup the output prints `SENSOR ... OK` or `NO DATA`
 for each. Stick sensitivity (`FORWARD_GAIN`, `BACKWARD_GAIN`, `DEADZONE`), smoothing (`RAMP_STEP`),

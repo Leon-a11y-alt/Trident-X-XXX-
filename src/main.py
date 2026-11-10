@@ -1,9 +1,10 @@
-"""TRIDENT X boat: 4 thrusters (tank drive), gripper servo and rear flipper servo.
+"""TRIDENT X boat: 4 thrusters, gripper servo and rear flipper servo.
 
-MATCH CONTROLS (tank drive)
-    Stick ONE  (left)   up/down  -> both LEFT  thrusters forward/back
-    Stick THREE (right) up/down  -> both RIGHT thrusters forward/back
-        both up = ahead, both down = back, one up + one down = spin on the spot
+MATCH CONTROLS (anticlockwise = pull, clockwise = push)
+    Stick ONE  up    -> FORWARD:  LF anticlockwise, LB clockwise, RF anticlockwise, RB clockwise
+    Stick ONE  down  -> BACKWARD: every thruster the other way
+    Stick FOUR right -> TURN RIGHT: left side as forward, right side as backward
+    Stick FOUR left  -> TURN LEFT:  left side as backward, right side as forward
     Hold Y / hold B              -> gripper open / close (stays where you let go)
     Tap X                        -> flipper down / up
     Tap A                        -> slow mode on/off (60 % power)
@@ -23,23 +24,24 @@ import auton
 
 # ---------------- ports ----------------
 # FINAL wiring (shortest routes): left parts on the M1-M4 row, right parts on the M5-M7 row.
-IMU_PORT = "S1"
-RADIOBEACON_PORT = "S6"
+IMU_PORT = "S6"
+RADIOBEACON_PORT = "S1"
 GRIPPER = "M4"   # gripper servo, at the FRONT (bow) of the boat (None = not fitted)
 FLIPPER = "M2"   # flipper servo at the BACK (None = not plugged in)
 
 # Thrusters: front = gripper end (the bow), back = flipper end.
 # If the thruster test shows a "LEFT" thruster is really on the right, swap the ports below.
-LEFT_THRUSTERS = ("M3", "M1")    # (front-left, back-left)   - stick ONE
-RIGHT_THRUSTERS = ("M5", "M7")   # (front-right, back-right) - stick THREE
+LEFT_THRUSTERS = ("M3", "M1")    # (front-left, back-left)
+RIGHT_THRUSTERS = ("M5", "M7")   # (front-right, back-right)
 ALL_THRUSTERS = LEFT_THRUSTERS + RIGHT_THRUSTERS
 
 # Spin direction. Left side = "in", right side = "out" (anticlockwise), so the two sides spin
 # opposite ways. True = that thruster's power is flipped.
 # Check with the thruster test: on every step the water must go BACKWARD (toward the flipper).
 # If one pushes the wrong way, change its True/False.
-REVERSED = {"M3": True, "M1": True,     # left  (in)
-            "M5": False, "M7": False}   # right (out, anticlockwise)
+# Set so that FORWARD = LF anticlockwise, LB clockwise, RF anticlockwise, RB clockwise.
+REVERSED = {"M3": False, "M1": True,    # left front ANTICLOCKWISE, left back CLOCKWISE
+            "M5": True, "M7": False}    # right front ANTICLOCKWISE, right back CLOCKWISE
 
 # Power of each thruster, 1.0 = full (the highest). Only turn one down (e.g. 0.9) if it is
 # stronger than the others and makes the boat pull to one side.
@@ -83,7 +85,7 @@ TEST_STEPS = [
 # (no buttons needed). Plug the gripper servo into each socket in turn to find a working one.
 # Set back to False for normal driving.
 SERVO_TEST = False
-SERVO_TEST_PORTS = ("M4", "M2", "M6", "M8")   # gripper, flipper, spare, spare
+SERVO_TEST_PORTS = ("M4", "M6", "M8")   # gripper socket + spares (flipper M2 left alone)
 
 BUTTONS = ("UP", "DOWN", "LEFT", "RIGHT", "X", "Y", "A", "B", "LEFT_TRIGGER", "RIGHT_TRIGGER")
 
@@ -230,7 +232,7 @@ def driver(robot):
     if GRIPPER:
         robot.servo(GRIPPER).set_speed(SERVO_SPEED)
     set_flipper(FLIPPER_UP_DEG)
-    print("DRIVER: stick ONE = left side, THREE = right side | "
+    print("DRIVER: stick ONE = forward/back, FOUR = turn | "
           + ("hold Y open, B close | " if GRIPPER else "") + "tap X flipper | tap A slow mode")
 
     while robot.running:
@@ -264,7 +266,12 @@ def driver(robot):
 
         # ----- thrusters -----
         power = SLOW_POWER if slow else 1.0
-        left, right = balanced(read_stick("ONE") * power, read_stick("THREE") * power, balance)
+        # Stick ONE up/down = forward/backward, stick FOUR right/left = turn right/left.
+        # Turn right: left side forward, right side backward (and the opposite for left).
+        forward, turn = read_stick("ONE"), read_stick("FOUR")
+        left = max(-100.0, min(100.0, forward + turn)) * power
+        right = max(-100.0, min(100.0, forward - turn)) * power
+        left, right = balanced(left, right, balance)
 
         if test_step is not None:
             if test_loops == 0:

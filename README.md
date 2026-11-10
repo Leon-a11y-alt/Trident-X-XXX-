@@ -68,7 +68,7 @@ in, closes the arm and drives back bow first, pushing the Beacon against our wal
 The radio only gives signal strength (`rssi`), and `read()` only holds the latest message, so the code
 reads it every loop and uses `rx_count` to catch every message. The log reports how many were missed.
 
-**Steering:** tank drive, the same as the sticks: both left thrusters (M3, M1) against both right
+**Steering:** left side against right side, the same mix the sticks make: both left thrusters (M3, M1) against both right
 thrusters (M5, M7), using the balance saved with the D-pad.
 
 **Calibrate in the pool first.** The checklist is at the bottom of `src/auton.py`. The most important
@@ -82,8 +82,10 @@ of 0.10 m around the arm, about 30 % with 0.20 m. A wide mouth on the arm matter
 
 | Control | Action |
 |---|---|
-| Stick ONE (left) up / down | Both LEFT thrusters (M3 front, M1 back) forward / back |
-| Stick THREE (right) up / down | Both RIGHT thrusters (M5 front, M7 back) forward / back |
+| Stick ONE up | Forward: LF anticlockwise, LB clockwise, RF anticlockwise, RB clockwise (anticlockwise = pull, clockwise = push) |
+| Stick ONE down | Backward: every thruster the other way |
+| Stick FOUR right | Turn right: left side (M3, M1) as forward, right side (M5, M7) as backward |
+| Stick FOUR left | Turn left: left side as backward, right side as forward |
 | Y (hold) | Open the gripper (M4); stays where you let go |
 | B (hold) | Close the gripper |
 | X (tap) | Flipper (M2) down / up |
@@ -93,6 +95,6 @@ of 0.10 m around the arm, about 30 % with 0.20 m. A wide mouth on the arm matter
 | D-pad DOWN (+ right trigger) | Setup: reset the forward (backward) balance |
 | Right trigger + tap UP | Setup: thruster test, each thruster alone at 30 % (tap again to stop) |
 
-Sensors: IMU on S1, Radio Receiver on S6. At startup the output prints `SENSOR ... OK` or `NO DATA`
+Sensors: IMU on S6, Radio Receiver on S1. At startup the output prints `SENSOR ... OK` or `NO DATA`
 for each. Stick sensitivity (`FORWARD_GAIN`, `BACKWARD_GAIN`, `DEADZONE`), smoothing (`RAMP_STEP`),
 ports and `REVERSED` thrusters are at the top of `src/main.py`.

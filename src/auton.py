@@ -71,6 +71,13 @@ START_Y = 0.0   # m sideways from the middle of our wall (+ = right, wall ends a
 # None = we could not see the Beacon: use the radio search and START_HEADING / START_Y above.
 BEACON_SEEN_Y = None
 LINEUP_OFFSET = 0.25     # m the boat starts short of the Beacon's line (room to curve onto it)
+# FACING start: only if the WHOLE boat (gripper fully retracted) fits in the Starting Area pointing
+# at the field - the 0.4 m is measured to the OUTER edge of the line, and a real pool's line can be
+# 25 mm off, so aim for about 0.38 m. Then the boat starts with its stern against our wall,
+# pointing straight at the Beacon, and skips the curve (about 1 s quicker).
+# False = start SIDEWAYS (the boat is longer than the Starting Area is deep).
+START_FACING = False
+FACING_START_X = 0.20    # m from our wall to the robot centre when the stern touches it - MEASURE
 LINEUP_POWER = 70.0      # forward power driving in (70 beat 50 and 40 in the simulator)
 LINEUP_OVERSHOOT = 0.06  # m past where JAW_OFFSET says the Beacon sits before closing
 LINEUP_LINE_GAIN = 250.0  # degrees of heading per m off the Beacon's line
@@ -274,16 +281,18 @@ class Heading:
 
 
 def start_pose():
-    """(heading, y) the boat must start at: worked out from BEACON_SEEN_Y in BEACON SEEN mode."""
+    """(heading, x, y) the boat must start at: worked out from BEACON_SEEN_Y in BEACON SEEN mode."""
     if BEACON_SEEN_Y is None:
-        return START_HEADING, START_Y
+        return START_HEADING, START_X, START_Y
+    if START_FACING:  # pointing straight at the Beacon, stern against our wall
+        return 0.0, FACING_START_X, BEACON_SEEN_Y
     side = 1.0 if BEACON_SEEN_Y >= 0 else -1.0
-    return side * 90.0, BEACON_SEEN_Y - side * LINEUP_OFFSET
+    return side * 90.0, START_X, BEACON_SEEN_Y - side * LINEUP_OFFSET
 
 
 def print_start():
     """Says which mode is set and exactly where to put the boat. Called from main.py initialize."""
-    heading, y = start_pose()
+    heading, _, y = start_pose()
     where = f"{abs(y):.2f} m {'right' if y >= 0 else 'left'} of the middle of our wall"
     if BEACON_SEEN_Y is None:
         print(f"AUTON MODE: RADIO SEARCH. Boat centre {where}, {START_X:.2f} m out, "
@@ -292,6 +301,12 @@ def print_start():
     if not 0.2 <= abs(BEACON_SEEN_Y) <= 0.78:
         print(f"AUTON WARNING: BEACON_SEEN_Y = {BEACON_SEEN_Y} is not beside the Anchorage "
               "(0.22 to 0.75 m out). Check the measurement and the +/- side.")
+    if START_FACING:
+        print(f"AUTON MODE: BEACON SEEN at {abs(BEACON_SEEN_Y):.2f} m "
+              f"{'right' if BEACON_SEEN_Y >= 0 else 'left'}, FACING start. Gripper fully RETRACTED, "
+              f"stern against our wall, centre {where}, pointing STRAIGHT at the Beacon. "
+              "Check the bow is not past the outer edge of the Starting Area line.")
+        return
     bow = "RIGHT" if heading > 0 else "LEFT"
     print(f"AUTON MODE: BEACON SEEN at {abs(BEACON_SEEN_Y):.2f} m "
           f"{'right' if BEACON_SEEN_Y >= 0 else 'left'}. Put the boat SIDEWAYS against our wall, "
@@ -487,8 +502,8 @@ class LineUpSearch(BeaconSearch):
     """
 
     def __init__(self, beacon_y):
-        heading, y = start_pose()
-        super().__init__(start_heading=heading, start_y=y)
+        heading, x, y = start_pose()
+        super().__init__(start_heading=heading, start_x=x, start_y=y)
         self.beacon_y = beacon_y
         self.state = "LINE"
 
@@ -580,7 +595,7 @@ def run(robot, imu_port, radio_port, arm_port, drive, balance,
     """
     start = clock()
     radio = BeaconListener(robot.radiobeacon(radio_port))
-    heading = Heading(robot.imu(imu_port), start_pose()[0])
+    heading = Heading(robot.imu(imu_port), start_pose()[0])  # (heading, x, y)
     heading.calibrate(_still_imu_readings)
     search = BeaconSearch() if BEACON_SEEN_Y is None else LineUpSearch(BEACON_SEEN_Y)
     if arm_port:  # None = no gripper servo fitted

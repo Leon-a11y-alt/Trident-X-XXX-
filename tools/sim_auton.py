@@ -214,11 +214,20 @@ def make(seed, heading_error=5.0, corner_start=True, **kw):
     return Sim(seed, heading, start_y, beacon, **kw), heading, start_y
 
 
-def play(seed, verbose=False, capture=0.10, seen=None, close_rssi=None, **kw):
+BOAT_SETTINGS = ("BOW_OFFSET", "STERN_OFFSET", "JAW_OFFSET", "START_FACING", "FACING_START_X")
+
+
+def play(seed, verbose=False, capture=0.10, seen=None, close_rssi=None, boat40=False, facing=False, **kw):
     """seen = None: radio search. seen = a number: BEACON SEEN mode, with the Beacon measured
     to +/- that many metres and the boat placed where auton.print_start() says (+/-3 cm, +/-5 deg)."""
     global CAPTURE_R
     CAPTURE_R = capture
+    saved = {k: getattr(auton, k) for k in BOAT_SETTINGS}
+    if boat40:  # a 0.40 m boat (gripper tucked in): 0.20 m centre to bow / stern, Beacon 0.12 m ahead
+        auton.BOW_OFFSET = auton.STERN_OFFSET = 0.20
+        auton.JAW_OFFSET = 0.12
+    auton.START_FACING = facing
+    auton.FACING_START_X = auton.STERN_OFFSET + 0.06  # the fake pool keeps the stern 5 cm off the wall
     sim, heading, start_y = make(seed, **kw)
     auton.BEACON_SEEN_Y = None
     auton.CLOSE_RSSI = close_rssi  # the fake radio sits near the stern: about -40 dBm with the Beacon held
@@ -229,8 +238,9 @@ def play(seed, verbose=False, capture=0.10, seen=None, close_rssi=None, **kw):
     else:
         rng = random.Random(seed * 31 + 7)
         auton.BEACON_SEEN_Y = round(sim.by + rng.uniform(-seen, seen), 2)
-        heading, start_y = auton.start_pose()
+        heading, start_x, start_y = auton.start_pose()
         sim.h = heading + rng.uniform(-5.0, 5.0)
+        sim.x = start_x
         sim.y = start_y + rng.uniform(-0.03, 0.03)
     auton._still_imu_readings[:] = [sim.imu_sensor.read() for _ in range(20)]
     ports = dict(imu_port="I", radio_port="B", arm_port="A",
@@ -241,6 +251,8 @@ def play(seed, verbose=False, capture=0.10, seen=None, close_rssi=None, **kw):
     finally:
         auton.BEACON_SEEN_Y = None
         auton.CLOSE_RSSI = None
+        for k, v in saved.items():
+            setattr(auton, k, v)
     if verbose:
         print(f"seed {seed}: start heading {heading:.0f}, y {start_y:.2f}; "
               f"beacon at y {make(seed)[0].by:.2f}")
@@ -269,7 +281,11 @@ if __name__ == "__main__":
                       ("BEACON SEEN + radio close (CLOSE_RSSI -40), calibrated",
                        {"seen": 0.05, "close_rssi": -40.0}),
                       ("BEACON SEEN + radio close (CLOSE_RSSI -40), NOT calibrated",
-                       {"seen": 0.05, "close_rssi": -40.0, "speed_error": 0.25})):
+                       {"seen": 0.05, "close_rssi": -40.0, "speed_error": 0.25}),
+                      ("0.40 m boat, BEACON SEEN, SIDEWAYS start", {"seen": 0.05, "boat40": True}),
+                      ("0.40 m boat, BEACON SEEN, FACING start", {"seen": 0.05, "boat40": True, "facing": True}),
+                      ("0.40 m boat, FACING start, NOT calibrated",
+                       {"seen": 0.05, "boat40": True, "facing": True, "speed_error": 0.25})):
         results = [play(s, **kw) for s in range(MATCHES)]
         wins = sum(r[0] for r in results)
         states = {}

@@ -37,6 +37,13 @@ Simulated: about 50 % scored (85 % with a jaw that grabs from 0.20 m), against 9
 Measuring the Beacon to +/-5 cm is enough (51 %); +/-10 cm drops to 42 %.
 Ask the Head Referee whether robots may be placed after the Beacon is in the pool.
 
+**Facing start (only if the boat fits):** with the gripper fully retracted, if the whole boat fits in the
+Starting Area pointing at the field (0.4 m to the OUTER edge of the line, which can be 25 mm off at a real
+pool, so aim for about 0.38 m), set `START_FACING = True` and measure `FACING_START_X` (wall to boat centre
+with the stern touching the wall). The boat then starts stern to our wall, pointing straight at the Beacon
+(the start-up printout says where), and skips the curve. Simulated on a 0.40 m boat: 46 % instead of 39 %
+sideways, jaws close about 1 s sooner.
+
 **Radio "Beacon in the jaws" check (optional, off until measured):** with `CLOSE_RSSI` set, the gripper
 also closes as soon as 2 radio messages in a row are at least that loud, whichever comes first with the
 distance driven. To measure it: hold the Beacon in the open jaws, start the program and read `rssi=` in

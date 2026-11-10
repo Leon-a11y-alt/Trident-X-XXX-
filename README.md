@@ -82,8 +82,8 @@ of 0.10 m around the arm, about 30 % with 0.20 m. A wide mouth on the arm matter
 
 | Control | Action |
 |---|---|
-| Right joystick up / down | Straight forward / backward (stick TWO, flipped) |
-| Left joystick left / right | Turn left / right (stick THREE, flipped); both sticks at once = forward or backward while turning |
+| Left joystick up / down | Straight forward / backward (stick FOUR, flipped) |
+| Right joystick left / right | Turn left / right (stick ONE, flipped); both sticks at once = forward or backward while turning |
 | Both joysticks centred | Stop |
 | Y (hold) | Open the gripper (M4); stays where you let go |
 | B (hold) | Close the gripper |

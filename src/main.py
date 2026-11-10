@@ -1,8 +1,8 @@
 """TRIDENT X boat: 4 thrusters, gripper servo and rear flipper servo.
 
 MATCH CONTROLS
-    Right joystick UP / DOWN     -> straight FORWARD / BACKWARD (centre = stop)   stick TWO, flipped
-    Left joystick  LEFT / RIGHT  -> turn LEFT / RIGHT (centre = no turn)          stick THREE, flipped
+    Left joystick  UP / DOWN     -> straight FORWARD / BACKWARD (centre = stop)   stick FOUR, flipped
+    Right joystick LEFT / RIGHT  -> turn LEFT / RIGHT (centre = no turn)          stick ONE, flipped
         both at once = forward or backward while turning
         (differential thrust: turn right = left side more forward, right side more backward)
     Hold Y / hold B              -> gripper open / close (stays where you let go)
@@ -50,19 +50,20 @@ REVERSED = {"M3": False, "M1": True,    # left front ANTICLOCKWISE, left back CL
 THRUSTER_POWER = {"M3": 1.0, "M1": 1.0, "M5": 1.0, "M7": 1.0}
 
 # ---------------- driving ----------------
-# Right joystick UP/DOWN = forward/backward, left joystick LEFT/RIGHT = turn left/right.
+# Left joystick UP/DOWN = forward/backward, right joystick LEFT/RIGHT = turn left/right.
 # The Driver screen prints the raw sticks once a second ("sticks 1=.. 2=.. 3=.. 4=..").
 # Check them before driving:
-#   right joystick UP   -> the THROTTLE_STICK number must go POSITIVE, else set THROTTLE_SIGN = -1
-#   left joystick RIGHT -> the STEER_STICK number must go POSITIVE,    else set STEER_SIGN = -1
+#   left joystick UP     -> the THROTTLE_STICK number x THROTTLE_SIGN must come out POSITIVE
+#   right joystick RIGHT -> the STEER_STICK number x STEER_SIGN must come out POSITIVE
 #   if the wrong number moves, put the number that DOES move in THROTTLE_STICK / STEER_STICK.
-# Measured on our controller (pool test 2026-11-11): the right joystick's up/down comes in as
-# stick TWO and reads NEGATIVE when pushed up; the left joystick's left/right comes in as stick
-# THREE and reads POSITIVE when pushed left. Hence TWO / THREE with both signs flipped.
-THROTTLE_STICK = "TWO"     # right joystick, up/down
-STEER_STICK = "THREE"      # left joystick, left/right
-THROTTLE_SIGN = -1         # right joystick UP reads negative -> flip so UP = forward
-STEER_SIGN = -1            # left joystick RIGHT reads negative -> flip so RIGHT = turn right
+# Our controller sends its sticks rotated 180 deg from the library's labels (measured 2026-11-11:
+# right joystick up/down = stick TWO and left joystick left/right = stick THREE, both reversed).
+# So the left joystick's up/down is stick FOUR and the right joystick's left/right is stick ONE,
+# both reversed too. (Previous layout, tested OK: THROTTLE "TWO", STEER "THREE", both -1.)
+THROTTLE_STICK = "FOUR"    # left joystick, up/down
+STEER_STICK = "ONE"        # right joystick, left/right
+THROTTLE_SIGN = -1         # left joystick UP reads negative -> flip so UP = forward
+STEER_SIGN = -1            # right joystick RIGHT reads negative -> flip so RIGHT = turn right
 
 # 1.0 = normal. 3.0 = full power with the stick only 1/3 of the way.
 # NOTE: these go by the RAW stick direction (before THROTTLE_SIGN / STEER_SIGN). With the signs
@@ -92,7 +93,7 @@ FLIPPER_UP_DEG = 0        # resting position
 FLIPPER_DOWN_DEG = 180    # flipped position. Adjust both if the flipper hits the hull.
 
 # Thruster test (hold RIGHT_TRIGGER + tap UP): each thruster ALONE, low power, with the
-# FORWARD command - the same command it gets when the right joystick is pushed UP.
+# FORWARD command - the same command it gets when the left joystick is pushed UP.
 # For every thruster the water must go BACKWARD (toward the flipper). If it goes forward,
 # flip that thruster's True/False in REVERSED above. (name, ports, duty, seconds)
 TEST_DUTY = 20
@@ -286,7 +287,7 @@ def driver(robot):
 
         # ----- thrusters -----
         power = SLOW_POWER if slow else 1.0
-        # THROTTLE_STICK (right, up/down) = forward/backward, STEER_STICK (left, left/right) = turn.
+        # THROTTLE_STICK (left, up/down) = forward/backward, STEER_STICK (right, left/right) = turn.
         # Turn right: left side forward, right side backward (and the opposite for left).
         # Differential thrust: turn RIGHT = left side more forward, right side more backward.
         forward = THROTTLE_SIGN * read_stick(THROTTLE_STICK)

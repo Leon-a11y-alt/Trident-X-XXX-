@@ -1,8 +1,8 @@
 """TRIDENT X boat: 4 thrusters, gripper servo and rear flipper servo.
 
 MATCH CONTROLS
-    Left joystick  UP / DOWN     -> straight FORWARD / BACKWARD (centre = stop)
-    Right joystick LEFT / RIGHT  -> turn LEFT / RIGHT (centre = no turn)
+    Right joystick UP / DOWN     -> straight FORWARD / BACKWARD (centre = stop)   stick THREE
+    Left joystick  LEFT / RIGHT  -> turn LEFT / RIGHT (centre = no turn)          stick TWO
         both at once = forward or backward while turning
         (differential thrust: turn right = left side more forward, right side more backward)
     Hold Y / hold B              -> gripper open / close (stays where you let go)
@@ -50,14 +50,14 @@ REVERSED = {"M3": False, "M1": True,    # left front ANTICLOCKWISE, left back CL
 THRUSTER_POWER = {"M3": 1.0, "M1": 1.0, "M5": 1.0, "M7": 1.0}
 
 # ---------------- driving ----------------
-# Left joystick UP/DOWN = forward/backward, right joystick LEFT/RIGHT = turn left/right.
+# Right joystick UP/DOWN = forward/backward, left joystick LEFT/RIGHT = turn left/right.
 # The Driver screen prints the raw sticks once a second ("sticks 1=.. 2=.. 3=.. 4=..").
 # Check them before driving:
-#   left joystick UP     -> the THROTTLE_STICK number must go POSITIVE, else set THROTTLE_SIGN = -1
-#   right joystick RIGHT -> the STEER_STICK number must go POSITIVE,    else set STEER_SIGN = -1
+#   right joystick UP   -> the THROTTLE_STICK number must go POSITIVE, else set THROTTLE_SIGN = -1
+#   left joystick RIGHT -> the STEER_STICK number must go POSITIVE,    else set STEER_SIGN = -1
 #   if the wrong number moves, put the number that DOES move in THROTTLE_STICK / STEER_STICK.
-THROTTLE_STICK = "ONE"   # left joystick, up/down
-STEER_STICK = "FOUR"     # right joystick, left/right
+THROTTLE_STICK = "THREE"   # right joystick, up/down    (ONE/TWO = left side, THREE/FOUR = right)
+STEER_STICK = "TWO"        # left joystick, left/right
 THROTTLE_SIGN = 1
 STEER_SIGN = 1
 
@@ -86,7 +86,7 @@ FLIPPER_UP_DEG = 0        # resting position
 FLIPPER_DOWN_DEG = 180    # flipped position. Adjust both if the flipper hits the hull.
 
 # Thruster test (hold RIGHT_TRIGGER + tap UP): each thruster ALONE, low power, with the
-# FORWARD command - the same command it gets when the left joystick is pushed UP.
+# FORWARD command - the same command it gets when the right joystick is pushed UP.
 # For every thruster the water must go BACKWARD (toward the flipper). If it goes forward,
 # flip that thruster's True/False in REVERSED above. (name, ports, duty, seconds)
 TEST_DUTY = 20
@@ -246,7 +246,7 @@ def driver(robot):
     if GRIPPER:
         robot.servo(GRIPPER).set_speed(SERVO_SPEED)
     set_flipper(FLIPPER_UP_DEG)
-    print("DRIVER: stick ONE = forward/back, FOUR = turn | "
+    print(f"DRIVER: stick {THROTTLE_STICK} = forward/back, {STEER_STICK} = turn | "
           + ("hold Y open, B close | " if GRIPPER else "") + "tap X flipper | tap A slow mode")
 
     while robot.running:
@@ -280,7 +280,7 @@ def driver(robot):
 
         # ----- thrusters -----
         power = SLOW_POWER if slow else 1.0
-        # Stick ONE up/down = forward/backward, stick FOUR right/left = turn right/left.
+        # THROTTLE_STICK (right, up/down) = forward/backward, STEER_STICK (left, left/right) = turn.
         # Turn right: left side forward, right side backward (and the opposite for left).
         # Differential thrust: turn RIGHT = left side more forward, right side more backward.
         forward = THROTTLE_SIGN * read_stick(THROTTLE_STICK)

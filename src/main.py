@@ -1,8 +1,8 @@
 """TRIDENT X boat: 4 thrusters, gripper servo and rear flipper servo.
 
 MATCH CONTROLS
-    Right joystick UP / DOWN     -> straight FORWARD / BACKWARD (centre = stop)   stick THREE
-    Left joystick  LEFT / RIGHT  -> turn LEFT / RIGHT (centre = no turn)          stick TWO
+    Right joystick UP / DOWN     -> straight FORWARD / BACKWARD (centre = stop)   stick TWO, flipped
+    Left joystick  LEFT / RIGHT  -> turn LEFT / RIGHT (centre = no turn)          stick THREE, flipped
         both at once = forward or backward while turning
         (differential thrust: turn right = left side more forward, right side more backward)
     Hold Y / hold B              -> gripper open / close (stays where you let go)
@@ -56,12 +56,18 @@ THRUSTER_POWER = {"M3": 1.0, "M1": 1.0, "M5": 1.0, "M7": 1.0}
 #   right joystick UP   -> the THROTTLE_STICK number must go POSITIVE, else set THROTTLE_SIGN = -1
 #   left joystick RIGHT -> the STEER_STICK number must go POSITIVE,    else set STEER_SIGN = -1
 #   if the wrong number moves, put the number that DOES move in THROTTLE_STICK / STEER_STICK.
-THROTTLE_STICK = "THREE"   # right joystick, up/down    (ONE/TWO = left side, THREE/FOUR = right)
-STEER_STICK = "TWO"        # left joystick, left/right
-THROTTLE_SIGN = 1
-STEER_SIGN = 1
+# Measured on our controller (pool test 2026-11-11): the right joystick's up/down comes in as
+# stick TWO and reads NEGATIVE when pushed up; the left joystick's left/right comes in as stick
+# THREE and reads POSITIVE when pushed left. Hence TWO / THREE with both signs flipped.
+THROTTLE_STICK = "TWO"     # right joystick, up/down
+STEER_STICK = "THREE"      # left joystick, left/right
+THROTTLE_SIGN = -1         # right joystick UP reads negative -> flip so UP = forward
+STEER_SIGN = -1            # left joystick RIGHT reads negative -> flip so RIGHT = turn right
 
 # 1.0 = normal. 3.0 = full power with the stick only 1/3 of the way.
+# NOTE: these go by the RAW stick direction (before THROTTLE_SIGN / STEER_SIGN). With the signs
+# at -1, BACKWARD_GAIN is used when driving FORWARD (and for turning left) and FORWARD_GAIN when
+# reversing (and turning right). Keep them equal unless you mean that.
 FORWARD_GAIN = 3.0 
 BACKWARD_GAIN = 3.0    # full reverse at about half stick too
 DEADZONE = 15          # sticks rest up to 13 away from 0, so ignore anything below 15

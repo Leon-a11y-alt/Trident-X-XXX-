@@ -59,10 +59,13 @@ THRUSTER_POWER = {"M3": 1.0, "M1": 1.0, "M5": 1.0, "M7": 1.0}
 # Measured on our controller (pool test 2026-11-11): the right joystick's up/down comes in as
 # stick TWO and reads NEGATIVE when pushed up; the left joystick's left/right comes in as stick
 # THREE and reads POSITIVE when pushed left. Hence TWO / THREE with both signs flipped.
-THROTTLE_STICK = "TWO"     # right joystick, up/down
-STEER_STICK = "THREE"      # left joystick, left/right
-THROTTLE_SIGN = -1         # right joystick UP reads negative -> flip so UP = forward
-STEER_SIGN = -1            # left joystick RIGHT reads negative -> flip so RIGHT = turn right
+# The code's stick names do NOT follow the numbers printed on the controller. From the controller
+# test: right joystick up/down reads "TWO", left joystick left/right reads "THREE", so the left
+# joystick up/down is "FOUR" and the right joystick left/right is "ONE".
+THROTTLE_STICK = "FOUR"    # LEFT joystick (printed 1), up/down = forward/backward
+STEER_STICK = "ONE"        # RIGHT joystick (printed 4), left/right = turn
+THROTTLE_SIGN = -1         # UP reads negative (same as the other up/down axis) -> flip so UP = forward
+STEER_SIGN = -1            # RIGHT reads negative (same as the other left/right axis) -> flip
 
 # 1.0 = normal. 3.0 = full power with the stick only 1/3 of the way.
 # NOTE: these go by the RAW stick direction (before THROTTLE_SIGN / STEER_SIGN). With the signs
